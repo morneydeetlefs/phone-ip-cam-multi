@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phone Cam Uploader – Fresh Setup</title>
+  <link rel="icon" href="data:,">
+  <style>
+    body { font-family: sans-serif; background:#111; color:#eee; text-align:center; padding:15px; margin:0; }
+    input, button { padding:10px; margin:8px; font-size:1em; border-radius:6px; }
+    button { background:#444; color:white; border:none; cursor:pointer; }
+    button:hover { background:#666; }
+    #status { font-weight:bold; min-height:1.5em; margin:15px 0; }
+    .success { color:#0f0; }
+    .error { color:#f44; }
+    video, img { max-width:90%; margin:10px auto; display:block; border:2px solid #444; border-radius:8px; }
+  </style>
+</head>
+<body>
+  <h2>Phone → Multi-Cam Uploader</h2>
+  <p>Paste your blank Google Sheet URL below.<br>The first upload will set up tabs & headers automatically.</p>
+
+  <div style="max-width:500px; margin:0 auto;">
+    <input id="sheetUrl" placeholder="https://docs.google.com/spreadsheets/d/ABC.../edit" style="width:100%; box-sizing:border-box;">
+    <input id="cameraId" placeholder="Camera ID / Name (e.g. front-door-01)" required style="width:100%; box-sizing:border-box;">
+    <button onclick="startCamera()">Start Camera & Upload</button>
+  </div>
+
+  <p id="status">Waiting for input…</p>
+
+  <video id="video" autoplay playsinline muted style="display:none;"></video>
+  <canvas id="canvas" style="display:none;"></canvas>
+  <img id="preview" alt="Latest preview">
+
+  <!-- Hidden form + iframe for no-navigation POST -->
+  <form id="uploadForm" method="POST" target="hiddenIframe" style="display:none;">
+    <input type="hidden" name="jsonData" id="jsonDataField">
+  </form>
+  <iframe name="hiddenIframe" style="display:none; width:0;height:0;border:none;"></iframe>
+
+  <script>
+    const status = document.getElementById('status');
+    const sheetUrlInput = document.getElementById('sheetUrl');
+    const cameraIdInput = document.getElementById('cameraId');
+    let stream = null;
+    let timer = null;
+
+    async function startCamera() {
+      const sheetUrl = sheetUrlInput.value.trim();
+      const cameraId = cameraIdInput.value.trim();
+
+      if (!sheetUrl || !cameraId) {
+        status.textContent = 'Please fill Sheet URL and Camera ID';
+        status.className = 'error';
+        return;
+      }
+
+      status.textContent = 'Starting camera...';
+      status.className = '';
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' }
+        });
+        document.getElementById('video').srcObject = stream;
+        document.getElementById('video').style.display = 'block';
+        status.textContent = 'Camera ready. Sending first snapshot…';
+        captureAndSend();
+        timer = setInterval(captureAndSend, 30000); // 30s default – you can make adjustable later
+      } catch (err) {
+        status.textContent = 'Camera error: ' + err.message;
+        status.className = 'error';
+      }
+    }
+
+    function captureAndSend() {
+      const video = document.getElementById('video');
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      const preview = document.getElementById('preview');
+
+      if (video.videoWidth === 0) return;
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
+
+      // Timestamp overlay
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(0, canvas.height - 40, canvas.width, 40);
+      ctx.fillStyle = '#fff';
+      ctx.font = '16px Arial';
+      ctx.fillText(new Date().toLocaleString(), 10, canvas.height - 15);
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.65);
+      preview.src = dataUrl;
+      preview.style.display = 'block';
+
+      const payload = JSON.stringify({
+        sheetUrl: sheetUrlInput.value.trim(),
+        cameraId: cameraIdInput.value.trim(),
+        image: dataUrl,
+        width: canvas.width,
+        height: canvas.height,
+        userAgent: navigator.userAgent
+      });
+
+      document.getElementById('jsonDataField').value = payload;
+      document.getElementById('uploadForm').action = 'YOUR_APPS_SCRIPT_EXEC_URL_HERE';
+      document.getElementById('uploadForm').submit();
+
+      status.textContent = 'Snapshot sent → ' + new Date().toLocaleTimeString();
+      status.className = 'success';
+    }
+
+    // Cleanup
+    window.addEventListener('beforeunload', () => {
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      if (timer) clearInterval(timer);
+    });
+  </script>
+</body>
+</html>
