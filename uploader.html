@@ -3,67 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Phone Cam Uploader – Setup & Run</title>
+  <title>Phone Cam Uploader – Remember Settings</title>
   <link rel="icon" href="data:,">
   <style>
-    body {
-      font-family: sans-serif;
-      background: #111;
-      color: #eee;
-      text-align: center;
-      padding: 15px;
-      margin: 0;
-    }
-    h2 { margin: 10px 0 5px; }
-    .setup-form {
-      max-width: 500px;
-      margin: 0 auto 20px;
-      background: #222;
-      padding: 20px;
-      border-radius: 10px;
-    }
-    label {
-      display: block;
-      margin: 10px 0 5px;
-      text-align: left;
-    }
+    body { font-family: sans-serif; background:#111; color:#eee; text-align:center; padding:15px; margin:0; }
+    h2 { margin:10px 0 5px; }
+    .setup-form { max-width:500px; margin:0 auto 20px; background:#222; padding:20px; border-radius:10px; }
+    label { display:block; margin:10px 0 5px; text-align:left; }
     input[type="text"], input[type="number"], input[type="url"] {
-      width: 100%;
-      padding: 10px;
-      font-size: 1em;
-      border-radius: 6px;
-      border: 1px solid #444;
-      box-sizing: border-box;
-      background: #333;
-      color: #eee;
+      width:100%; padding:10px; font-size:1em; border-radius:6px; border:1px solid #444;
+      box-sizing:border-box; background:#333; color:#eee;
     }
-    button {
-      padding: 12px 24px;
-      font-size: 1.1em;
-      margin: 20px 10px 10px;
-      background: #444;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-    }
-    button:hover { background: #666; }
-    #status {
-      font-weight: bold;
-      min-height: 1.5em;
-      margin: 15px 0;
-    }
-    .success { color: #0f0; }
-    .error   { color: #f44; }
-    video, img {
-      max-width: 90%;
-      margin: 10px auto;
-      display: block;
-      border: 2px solid #444;
-      border-radius: 8px;
-      background: #000;
-    }
-    .hidden { display: none; }
+    button { padding:12px 24px; font-size:1.1em; margin:20px 10px 10px; background:#444; color:white;
+      border:none; border-radius:6px; cursor:pointer; }
+    button:hover { background:#666; }
+    #status { font-weight:bold; min-height:1.5em; margin:15px 0; }
+    .success { color:#0f0; }
+    .error { color:#f44; }
+    video, img { max-width:90%; margin:10px auto; display:block; border:2px solid #444; border-radius:8px; background:#000; }
+    .hidden { display:none; }
   </style>
 </head>
 <body>
@@ -71,33 +29,33 @@
   <h2>Phone → Camera Uploader</h2>
 
   <div id="setupSection" class="setup-form">
-    <p>Fill in camera details once. First image uploads immediately after camera starts.</p>
+    <p id="setupTitle">Setup Camera</p>
 
-    <label for="sheetUrl">Google Sheet URL (blank/new sheet):</label>
+    <label for="sheetUrl">Google Sheet URL:</label>
     <input type="url" id="sheetUrl" placeholder="https://docs.google.com/spreadsheets/d/..." required>
 
-    <label for="cameraId">Camera ID (unique, e.g. cam-front-01):</label>
+    <label for="cameraId">Camera ID (unique):</label>
     <input type="text" id="cameraId" placeholder="cam-front-01" required>
 
-    <label for="cameraName">Camera Name (display name):</label>
+    <label for="cameraName">Camera Name:</label>
     <input type="text" id="cameraName" placeholder="Front Door" required>
 
     <label for="description">Description (optional):</label>
-    <input type="text" id="description" placeholder="Main entrance, facing street">
+    <input type="text" id="description" placeholder="Main entrance">
 
     <label>Approximate Location (optional):</label>
     <div style="display:flex; gap:10px;">
-      <input type="text" id="lat" placeholder="Latitude (-29.85)" style="flex:1;">
-      <input type="text" id="lng" placeholder="Longitude (31.03)" style="flex:1;">
+      <input type="text" id="lat" placeholder="Latitude" style="flex:1;">
+      <input type="text" id="lng" placeholder="Longitude" style="flex:1;">
     </div>
 
     <label for="interval">Update every (seconds):</label>
     <input type="number" id="interval" value="30" min="10" max="300">
 
-    <label for="maxImages">Keep last N images in tab:</label>
+    <label for="maxImages">Keep last N images:</label>
     <input type="number" id="maxImages" value="10" min="1" max="50">
 
-    <button onclick="startCamera()">Save & Start Camera</button>
+    <button id="startBtn" onclick="startOrResume()">Save & Start / Resume</button>
   </div>
 
   <p id="status" class="hidden">Initializing...</p>
@@ -106,7 +64,6 @@
   <canvas id="canvas" class="hidden"></canvas>
   <img id="preview" alt="Latest snapshot" class="hidden">
 
-  <!-- Hidden form + iframe for POST -->
   <form id="uploadForm" method="POST" target="hiddenIframe" class="hidden">
     <input type="hidden" name="jsonData" id="jsonDataField">
   </form>
@@ -114,31 +71,69 @@
 
   <script>
     const setupSection = document.getElementById('setupSection');
-    const status       = document.getElementById('status');
-    const videoEl      = document.getElementById('video');
-    const canvasEl     = document.getElementById('canvas');
-    const ctx          = canvasEl.getContext('2d');
-    const previewEl    = document.getElementById('preview');
+    const setupTitle    = document.getElementById('setupTitle');
+    const startBtn      = document.getElementById('startBtn');
+    const status        = document.getElementById('status');
+    const videoEl       = document.getElementById('video');
+    const canvasEl      = document.getElementById('canvas');
+    const ctx           = canvasEl.getContext('2d');
+    const previewEl     = document.getElementById('preview');
 
     let stream = null;
     let timer  = null;
 
-    function startCamera() {
-      const sheetUrl   = document.getElementById('sheetUrl').value.trim();
-      const cameraId   = document.getElementById('cameraId').value.trim();
-      const cameraName = document.getElementById('cameraName').value.trim();
+    // Keys for localStorage
+    const STORAGE_KEY = 'phoneCamSettings';
 
-      if (!sheetUrl || !cameraId || !cameraName) {
+    // Load saved settings on page load
+    window.addEventListener('load', () => {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        try {
+          const settings = JSON.parse(saved);
+          document.getElementById('sheetUrl').value     = settings.sheetUrl    || '';
+          document.getElementById('cameraId').value     = settings.cameraId    || '';
+          document.getElementById('cameraName').value   = settings.cameraName  || '';
+          document.getElementById('description').value  = settings.description || '';
+          document.getElementById('lat').value          = settings.lat         || '';
+          document.getElementById('lng').value          = settings.lng         || '';
+          document.getElementById('interval').value     = settings.interval    || '30';
+          document.getElementById('maxImages').value    = settings.maxImages   || '10';
+
+          setupTitle.textContent = 'Resume with saved settings?';
+          startBtn.textContent   = 'Resume Camera';
+          status.textContent     = 'Settings loaded from previous session.';
+          status.className       = 'success';
+        } catch (e) {
+          console.warn('Invalid saved settings', e);
+        }
+      }
+    });
+
+    function startOrResume() {
+      const settings = {
+        sheetUrl:    document.getElementById('sheetUrl').value.trim(),
+        cameraId:    document.getElementById('cameraId').value.trim(),
+        cameraName:  document.getElementById('cameraName').value.trim(),
+        description: document.getElementById('description').value.trim(),
+        lat:         document.getElementById('lat').value.trim(),
+        lng:         document.getElementById('lng').value.trim(),
+        interval:    parseInt(document.getElementById('interval').value) || 30,
+        maxImages:   parseInt(document.getElementById('maxImages').value) || 10
+      };
+
+      if (!settings.sheetUrl || !settings.cameraId || !settings.cameraName) {
         status.textContent = 'Sheet URL, Camera ID and Name are required';
         status.className = 'error';
-        status.classList.remove('hidden');
         return;
       }
+
+      // Save settings locally
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
 
       setupSection.classList.add('hidden');
       status.textContent = 'Starting camera...';
       status.className = '';
-      status.classList.remove('hidden');
       videoEl.classList.remove('hidden');
 
       navigator.mediaDevices.getUserMedia({
@@ -147,10 +142,9 @@
       .then(s => {
         stream = s;
         videoEl.srcObject = stream;
-        status.textContent = 'Camera ready – capturing first image...';
-        captureAndSend(); // FIRST IMAGE IMMEDIATELY
-        const intervalSec = parseInt(document.getElementById('interval').value) || 30;
-        timer = setInterval(captureAndSend, intervalSec * 1000);
+        status.textContent = 'Camera ready – capturing first image now...';
+        captureAndSend();  // FIRST IMAGE IMMEDIATELY
+        timer = setInterval(captureAndSend, settings.interval * 1000);
       })
       .catch(err => {
         status.textContent = 'Camera error: ' + err.message;
@@ -175,24 +169,26 @@
       previewEl.src = dataUrl;
       previewEl.classList.remove('hidden');
 
+      const savedSettings = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+
       const payload = {
-        sheetUrl:    document.getElementById('sheetUrl').value.trim(),
-        cameraId:    document.getElementById('cameraId').value.trim(),
-        cameraName:  document.getElementById('cameraName').value.trim(),
-        description: document.getElementById('description').value.trim(),
-        lat:         document.getElementById('lat').value.trim(),
-        lng:         document.getElementById('lng').value.trim(),
-        interval:    parseInt(document.getElementById('interval').value) || 30,
-        maxImages:   parseInt(document.getElementById('maxImages').value) || 10,
+        sheetUrl:    savedSettings.sheetUrl,
+        cameraId:    savedSettings.cameraId,
+        cameraName:  savedSettings.cameraName,
+        description: savedSettings.description,
+        lat:         savedSettings.lat,
+        lng:         savedSettings.lng,
+        interval:    savedSettings.interval,
+        maxImages:   savedSettings.maxImages,
         image:       dataUrl,
         width:       canvasEl.width,
         height:      canvasEl.height,
         userAgent:   navigator.userAgent,
-        addedBy:     'morney'  // ← you can change this or make dynamic later
+        addedBy:     'morney'  // can make dynamic later
       };
 
       document.getElementById('jsonDataField').value = JSON.stringify(payload);
-      document.getElementById('uploadForm').action = 'https://script.google.com/macros/s/AKfycbylZK6Qxn9bZJBvKYP_Fwv-WamJHphD3-DyuPq4AK9PPntixw3-CdYNmJyGlDtpmXhp/exec';
+      document.getElementById('uploadForm').action = 'https://script.google.com/macros/s/YOUR_EXEC_URL_HERE/exec';
       document.getElementById('uploadForm').submit();
 
       status.textContent = `Sent → ${new Date().toLocaleTimeString()}`;
